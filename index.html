@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en-us">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+    <title>WebGL Player | Art-Verse</title>
+    <link rel="shortcut icon" href="TemplateData/favicon.ico">
+    <link rel="stylesheet" href="TemplateData/style.css">
+    <style>
+    .Fitted {
+      overflow-x:hidden;
+      overflow-y:hidden;
+      width:100vw;
+      height:100vh;
+    }
+    </style>
+  </head>
+  <body>
+    <div id="avatar-Container">
+      <iframe id="readyPLayerMeHolder" class="frame Fitted" allow="camera *; microphone *"></iframe>
+    </div>
+    <div id="unity-container" class="unity-desktop Fitted"  hidden>
+      <canvas id="unity-canvas" class="Fitted"></canvas>
+      <div id="unity-warning"> </div>
+    </div>
+
+    <div id="audio-zone" hidden></div>
+    <script defer src="Scripts/Bootstraper/startup.js"></script>
+    <script defer src="Scripts/web3/moralis.js"></script>
+    <script defer src="Scripts/voice/nethervoice.js"></script>
+    <script defer src="Scripts/Extensions/jszip.min.js"></script>
+    <script defer src="Scripts/Extensions/Presentation.js"></script>
+  </body>
+</html>
