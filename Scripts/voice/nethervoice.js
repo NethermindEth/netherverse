@@ -34,10 +34,10 @@ const receiveMessage = async (message) => {
             await handleAnswer(data.SenderId, JSON.parse(data.Body));
             break;
         case "Disconnect" :
-            handleDisconnect(data.SenderId);
+            handleDisconnect(data.SenderId, data.TargetIds);
             break;
-        case "Raw" :
-            // Note (Ayman) :: send byte[] via datachannels 
+        case "File" :
+            handleFile(data.Body, Data.TargetIds);
             break;
         default:
             break;
@@ -49,14 +49,31 @@ const send = (target, message) => {
     WebglInstance.SendMessage("GameManager", "ReceiveMessage", JSON.stringify(message));
 }
 
-const handleDisconnect = (userId) => {
-    availableUsers = availableUsers.filter(user => user != userId)
-    localConnections[userId].close();
-    delete localConnections[userId];
+const handleFile = (fileData, recipients) => {
+    var file = JSON.parse(fileData);
+    // upload file to server and get url
+    var url = "https://dummy.url.for.file.upload";
+    // send([localUser], { Source   : "Browser",
+    //                     Action   : "File",
+    //                     Body     : url,
+    //                     SenderId : localUser });  
 
-    var userAudio = document.getElementById("audio-input :: " + userId);
-    userAudio.srcObject = null;
-    userAudio.remove();
+}
+
+const handleDisconnect = (userId, others) => {
+    if(userId == localUser) {
+        for(var i = 0; i < others.length; i++) {
+            handleDisconnect(others[i], null);
+        }
+    } else {
+        availableUsers = availableUsers.filter(user => user != userId)
+        localConnections[userId].close();
+        delete localConnections[userId];
+    
+        var userAudio = document.getElementById("audio-input::" + userId);
+        userAudio.srcObject = null;
+        userAudio.remove();
+    }
 
 }
 
@@ -104,7 +121,7 @@ const createHandshake = (userId) => {
         // create audio element 
         var remoteAudio = document.createElement("AUDIO");
         remoteAudio.srcObject = event.streams[0];
-        remoteAudio.id = "audio-input :: " + userId;
+        remoteAudio.id = "audio-input::" + userId;
         audioZone.appendChild(remoteAudio);
         remoteAudio.play();
     };
@@ -153,19 +170,19 @@ const handleAnswer = async (sender, answer) => {
     console.log("Handle Answer Finished");
 }
 
-function toggleMicrophone() {
+function toggleMicrophone(isOn) {
     localStream.getAudioTracks().forEach(track => {
-        track.enabled = !track.enabled;  
+        track.enabled = isOn;  
     });
 }
 
-function toggleSpeaker() {
+function toggleSpeaker(isOn) {
     var audioElements = document.getElementById("audio-zone");
     var children = audioElements.children;
     for (var i = 0; i < children.length; i++) {
         var child = children[i];
         if (child.tagName == "AUDIO") {
-            child.muted = !child.muted;
+            child.muted = !isOn;
         }
     }
 }
