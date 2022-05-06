@@ -1,16 +1,19 @@
 const subdomain = 'demo'; // Replace with your custom subdomain
 var avatarURL = "";
+var buildReady = false;
+var WebglInstance;
+
 const ReadyPlayerMeProxy = document.getElementById('readyPLayerMeHolder');
 var unity_container = document.querySelector("#unity-container");
 var avatar_container = document.querySelector("#avatar-Container");
 var canvas = document.querySelector("#unity-canvas");
 var warningBanner = document.querySelector("#unity-warning");
-var WebglInstance;
-function SetupReadyPlayerMe() {
-    ReadyPlayerMeProxy.src = `https://${subdomain}.readyplayer.me/avatar?frameApi`;
-    window.addEventListener('message', subscribe);
-    document.addEventListener('message', subscribe);
 
+function WaitSyncBuildReadyStatus() {
+    while(!buildReady);
+}
+
+function SetupReadyPlayerMe() {
     function subscribe(event) {
         const json = parse(event);
 
@@ -35,7 +38,9 @@ function SetupReadyPlayerMe() {
             avatarURL= json.data.url;
             // hide avatarContainer
             avatar_container.hidden = true;
-            SetupUnityFrame();
+            unity_container.hidden = false;
+            WaitSyncBuildReadyStatus();
+            WebglInstance.SendMessage("MenuManager", "SetUserAvatar", "external::" + avatarURL);
         }
 
         // Get user id
@@ -51,6 +56,10 @@ function SetupReadyPlayerMe() {
             return null;
         }
     }
+
+    ReadyPlayerMeProxy.src = `https://${subdomain}.readyplayer.me/avatar?frameApi`;
+    window.addEventListener('message', subscribe);
+    document.addEventListener('message', subscribe);
 }
 
 // Shows a temporary message banner/ribbon for a few seconds, or
@@ -61,7 +70,6 @@ function SetupReadyPlayerMe() {
 // user.
 function SetupUnityFrame() {
 // unhide unity-container
-    unity_container.hidden = false;
     function unityShowBanner(msg, type) {
         function updateBannerVisibility() {
             warningBanner.style.display = warningBanner.children.length ? 'block' : 'none';
@@ -114,13 +122,12 @@ function SetupUnityFrame() {
         createUnityInstance(canvas, config, null).then((unityInstance) => {
             WebglInstance = unityInstance;
             // wait for 10 seconds before showing the avatar
-            setTimeout(() => {
-                WebglInstance.SendMessage("MenuManager", "SetUserAvatar", "external::" + avatarURL);
-            }, 10000);
         }).catch((message) => {
             alert(message);
         });
     };
     document.body.appendChild(script);
 }
+
 SetupReadyPlayerMe();
+SetupUnityFrame();

@@ -2,7 +2,7 @@ var localUser, currentRoom;
 var availableUsers = [];
 
 var localConnections = {}
-var localStream;
+var localStream = null;
 
 var audioZone = document.getElementById("audio-zone");
 
@@ -84,19 +84,22 @@ const handleInitiate  = async (user, success) => {
     }
     console.log("Initiate Started");
     localUser = user;
-    localStream = await navigator.mediaDevices
-                                 .getUserMedia({ 
-                                    audio: true, 
-                                    video: false,
-                                    audioConstraints: 
-                                       {echoCancellation: true,
-                                        noiseSuppression: true,
-                                        autoGainControl : true }
-                                    });
-    var localAudio = document.createElement("AUDIO");
-    localAudio.srcObject = localStream;
-    localAudio.id = "local-audio";
-    console.log("Initiate Finished");
+    try {
+        localStream = await navigator.mediaDevices
+                                     .getUserMedia({ 
+                                        audio: 
+                                            { echoCancellation: true ,
+                                              noiseSuppression: true , 
+                                              autoGainControl : true }, 
+                                        video: false
+                                        });
+        var localAudio = document.createElement("AUDIO");
+        localAudio.srcObject = localStream;
+        localAudio.id = "local-audio";
+        console.log("Initiate Finished");
+    } catch (error) {
+        localStream = null;
+    }
 }
 
 const handleHandshake = async (users, room) => {
@@ -125,8 +128,9 @@ const createHandshake = (userId) => {
         audioZone.appendChild(remoteAudio);
         remoteAudio.play();
     };
-
-    localStream.getTracks().forEach(track => connection.addTrack(track, localStream));
+    if(localStream != null) {
+        localStream.getTracks().forEach(track => connection.addTrack(track, localStream));
+    }
     console.log("Create Handshake Finished");
     return connection;
 }
@@ -171,9 +175,11 @@ const handleAnswer = async (sender, answer) => {
 }
 
 function toggleMicrophone(isOn) {
-    localStream.getAudioTracks().forEach(track => {
-        track.enabled = isOn;  
-    });
+    if(localStream != null) {
+        localStream.getAudioTracks().forEach(track => {
+            track.enabled = isOn;  
+        });
+    }
 }
 
 function toggleSpeaker(isOn) {
