@@ -67,8 +67,10 @@ const handleDisconnect = (userId, others) => {
         }
     } else {
         availableUsers = availableUsers.filter(user => user != userId)
-        localConnections[userId].close();
-        delete localConnections[userId];
+        if(localConnections[userId] != null) {
+            localConnections[userId].close();
+            delete localConnections[userId];
+        }
     
         var userAudio = document.getElementById("audio-input::" + userId);
         if(userAudio != null) {
@@ -90,9 +92,9 @@ const handleInitiate  = async (user, success) => {
         localStream = await navigator.mediaDevices
                                      .getUserMedia({ 
                                         audio: 
-                                            { echoCancellation: true ,
-                                              noiseSuppression: true , 
-                                              autoGainControl : true }, 
+                                            { echoCancellation: true  ,
+                                              noiseSuppression: true  , 
+                                              autoGainControl : false }, 
                                         video: false
                                         });
         var localAudio = document.createElement("AUDIO");
