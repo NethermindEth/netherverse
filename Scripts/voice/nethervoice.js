@@ -71,8 +71,10 @@ const handleDisconnect = (userId, others) => {
         delete localConnections[userId];
     
         var userAudio = document.getElementById("audio-input::" + userId);
-        userAudio.srcObject = null;
-        userAudio.remove();
+        if(userAudio != null) {
+            userAudio.srcObject = null;
+            userAudio.remove();
+        }
     }
 
 }
