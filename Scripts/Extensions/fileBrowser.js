@@ -42,3 +42,15 @@ const GetLocalFileProcess = async (callBack) => {
     }
     input.click();
 }
+
+
+const handleFile = (fileData, metadata) => {
+    var file = JSON.parse(fileData);
+    // upload file to server and get url
+    var url = "https://dummy.url.for.file.upload";
+    // send([localUser], { Source   : handlers.Browser /* Browser */,
+    //                     Action   : actions.File,
+    //                     Body     : url,
+    //                     SenderId : localUser });  
+
+}

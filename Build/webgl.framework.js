@@ -1317,7 +1317,7 @@ function _emscripten_asm_const_id(code, a0) {
  return ASM_CONSTS[code](a0);
 }
 STATIC_BASE = GLOBAL_BASE;
-STATICTOP = STATIC_BASE + 9379008;
+STATICTOP = STATIC_BASE + 9401936;
 __ATINIT__.push({
  func: (function() {
   __GLOBAL__sub_I_AccessibilityScriptingClasses_cpp();
@@ -3387,7 +3387,7 @@ __ATINIT__.push({
   ___emscripten_environ_constructor();
  })
 });
-var STATIC_BUMP = 9379008;
+var STATIC_BUMP = 9401936;
 Module["STATIC_BASE"] = STATIC_BASE;
 Module["STATIC_BUMP"] = STATIC_BUMP;
 var tempDoublePtr = STATICTOP;
@@ -4044,6 +4044,13 @@ function _ToggleMicrophone(isOn) {
 }
 function _ToggleSpeaker(isOn) {
  toggleSpeaker(isOn);
+}
+function _UpdatePlayerPosition(id, _x, _y, _z, direction) {
+ UpdatePlayerPosition(id, {
+  x: _x,
+  y: _y,
+  z: _z
+ }, direction);
 }
 var webSocketState = {
  instances: {},
@@ -21205,6 +21212,7 @@ Module.asmLibraryArg = {
  "_SocketState": _SocketState,
  "_ToggleMicrophone": _ToggleMicrophone,
  "_ToggleSpeaker": _ToggleSpeaker,
+ "_UpdatePlayerPosition": _UpdatePlayerPosition,
  "_WebSocketAddSubProtocol": _WebSocketAddSubProtocol,
  "_WebSocketAllocate": _WebSocketAllocate,
  "_WebSocketClose": _WebSocketClose,

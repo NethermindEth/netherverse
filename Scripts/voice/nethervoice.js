@@ -1,8 +1,12 @@
-var localUser, currentRoom;
+const EFFICIENT_MODE = false;
+var localUser, transform;
 var availableUsers = [];
 
-var localConnections = {}
+var localConnections = {};
 var localStream = null;
+
+var audioOn = true;
+var microOn = true;
 
 var audioZone = document.getElementById("audio-zone");
 
@@ -14,6 +18,19 @@ var configuration = {
     sdpSemantics: "unified-plan"
 };
 
+var actions = {   
+    Initiate   : 0,       Offer      : 3,      
+    Handshake  : 5,       Disconnect : 6,
+    Answer     : 4,       Quit       : 9,
+    
+}
+
+var handlers = {
+    Browser    : 0,     Unity     : 1,      
+    Server     : 2,     None      : 3,
+}
+
+
 function handleMessage(message) {
     receiveMessage(message);
 }
@@ -21,23 +38,23 @@ function handleMessage(message) {
 const receiveMessage = async (message) => {
     var data = JSON.parse(message);
     switch (data.Action) {
-        case "Initiate":
-            await handleInitiate(data.SenderId, data.Body == "true");
+        case actions.Initiate   :
+            await handleInitiate(data.SenderId);
             break;
-        case "Handshake" :
-            handleHandshake(data.TargetIds, data.RoomId);
+        case actions.Handshake  :
+            handleHandshake(data.TargetIds);
             break;
-        case "Offer":
+        case actions.Offer      :
             await handleOffer(data.SenderId, JSON.parse(data.Body));
             break;
-        case "Answer":
+        case actions.Answer     :
             await handleAnswer(data.SenderId, JSON.parse(data.Body));
             break;
-        case "Disconnect" :
+        case actions.Disconnect :
             handleDisconnect(data.SenderId, data.TargetIds);
             break;
-        case "File" :
-            handleFile(data.Body, Data.TargetIds);
+        case actions.Quit       :
+            handleQuit(data.SenderId, data.TargetIds);
             break;
         default:
             break;
@@ -46,21 +63,10 @@ const receiveMessage = async (message) => {
 
 const send = (target, message) => {
     message.TargetIds = [target];    
-    WebglInstance.SendMessage("GameManager", "ReceiveMessage", JSON.stringify(message));
+    WebglInstance.SendMessage("GameManager", "HandleMessageBrowser", JSON.stringify(message));
 }
 
-const handleFile = (fileData, recipients) => {
-    var file = JSON.parse(fileData);
-    // upload file to server and get url
-    var url = "https://dummy.url.for.file.upload";
-    // send([localUser], { Source   : "Browser",
-    //                     Action   : "File",
-    //                     Body     : url,
-    //                     SenderId : localUser });  
-
-}
-
-const handleDisconnect = (userId, others) => {
+const handleQuit = (userId, others) => {
     if(userId == localUser) {
         for(var i = 0; i < others.length; i++) {
             handleDisconnect(others[i], null);
@@ -78,14 +84,27 @@ const handleDisconnect = (userId, others) => {
             userAudio.remove();
         }
     }
+}
+
+const handleDisconnect = (userId, others) => {
+    if(userId == localUser) {
+        for(var i = 0; i < others.length; i++) {
+            handleDisconnect(others[i], null);
+        }
+    } else {
+        availableUsers = availableUsers.filter(user => user != userId)
+        if(localConnections[userId] != null) {
+            if(EFFICIENT_MODE) {
+                localConnections[userId].replaceTrack(null, localStream);
+            } else {
+                toggleMuteUser(userId, false);
+            }
+        }
+    }
 
 }
 
-const handleInitiate  = async (user, success) => {
-    if (!success) {
-        alert("Login failed");
-        return;
-    }
+const handleInitiate  = async (user) => {
     console.log("Initiate Started");
     localUser = user;
     try {
@@ -94,9 +113,9 @@ const handleInitiate  = async (user, success) => {
                                         audio: 
                                             { echoCancellation: true  ,
                                               noiseSuppression: true  , 
-                                              autoGainControl : false }, 
+                                              autoGainControl : true }, 
                                         video: false
-                                        });
+                                    });
         var localAudio = document.createElement("AUDIO");
         localAudio.srcObject = localStream;
         localAudio.id = "local-audio";
@@ -106,15 +125,23 @@ const handleInitiate  = async (user, success) => {
     }
 }
 
-const handleHandshake = async (users, room) => {
+const handleHandshake = async (users) => {
     console.log("Handshake Started");
-    currentRoom = room;
     availableUsers = users;
-    users.forEach(user => {
+    availableUsers.forEach(user => {
         var exists = localUser == user;
         if(!exists) {
-            localConnections[user] = createHandshake(user);
-            proposeOffer(user);
+            if(localConnections[user] == null) {
+                localConnections[user] = createHandshake(user);
+                proposeOffer(user);
+            } else {
+                if(EFFICIENT_MODE) {
+                    localConnections[user].replaceTrack(localStream.getTracks()[0], localStream);
+                } else {
+                    toggleMuteUser(user, audioOn);
+                }
+                availableUsers.push(user);
+            }
         }
     });
     console.log("Handshake Finished");
@@ -131,7 +158,9 @@ const createHandshake = (userId) => {
         remoteAudio.id = "audio-input::" + userId;
         audioZone.appendChild(remoteAudio);
         remoteAudio.play();
+        remoteAudio.muted = !audioOn;
     };
+
     if(localStream != null) {
         localStream.getTracks().forEach(track => connection.addTrack(track, localStream));
     }
@@ -146,10 +175,10 @@ const proposeOffer = async (targetId) => {
     
     await new Promise(resolve => setTimeout(resolve, 1000));
     
-    send(targetId,{ Source   : "Browser", 
-                    Action   : "Offer",
-                    Body     : JSON.stringify(localConnections[targetId].localDescription),
-                    SenderId : localUser });
+    send(targetId, {  Source   : handlers.Browser, 
+                      Action   : actions.Offer,
+                      Body     : JSON.stringify(localConnections[targetId].localDescription),
+                      SenderId : localUser });
     console.log("Propose Offer Finished");
 }
 
@@ -165,8 +194,8 @@ const handleOffer = async (target, offer) => {
 
     await new Promise(resolve => setTimeout(resolve, 1000));
 
-    send(target, {  Source   : "Browser",
-                    Action   : "Answer",
+    send(target, {  Source   : handlers.Browser,
+                    Action   : actions.Answer,
                     Body     : JSON.stringify(localConnections[target].localDescription), 
                     SenderId : localUser});
     console.log("Handle Offer Finished");
@@ -179,24 +208,64 @@ const handleAnswer = async (sender, answer) => {
 }
 
 function toggleMicrophone(isOn) {
+    microOn = isOn;
     if(localStream != null) {
         localStream.getAudioTracks().forEach(track => {
-            track.enabled = isOn;  
+            track.enabled = microOn;  
         });
     }
 }
 
-function toggleSpeaker(isOn) {
+function toggleMuteUser(id, state) {
+    const audioElement = document.getElementById("audio-input::" + id);
+    audioElement.muted = state;
+}
+
+function toggleSpeaker(isOn, id) {
+    audioOn = isOn;
     var audioElements = document.getElementById("audio-zone");
     var children = audioElements.children;
     for (var i = 0; i < children.length; i++) {
         var child = children[i];
         if (child.tagName == "AUDIO") {
-            child.muted = !isOn;
+            child.muted = !audioOn;
         }
     }
 }
 
-function closeTab() {
-    window.close();
+function UpdatePlayerPosition(id, _position, _direction) {
+    if(localUser == null ) return;
+    var getAudioConstraints = (remotePos) => {
+        let xs = transform.position.x - remotePos.x;
+        let ys = transform.position.y - remotePos.y;
+        let zs = transform.position.z - remotePos.z;
+        var distance = Math.sqrt(xs * xs + ys * ts + zs * zs );
+        var volume = Math.max(0, (1-Math.exp(distance - 10)));
+        var otherAngle = xs != 0 ? Math.atan(ys/xs) 
+                                 : Math.PI * 0.5;
+        var relativePosition = transform.angle - otherAngle ;
+        return {
+            "volume"   : volume, 
+            "relative" : relativePosition / Math.Pi
+        };
+    }
+
+    if(id == localUser) {
+        transform = {
+            "position" : _position,
+            "angle"    : _direction 
+        } 
+        return;
+    }
+
+    var constraints = getAudioConstraints(transform.position, _position);
+
+    const audioContext = new AudioContext();
+    const audioElement = document.getElementById("audio-input::" + id);
+    const track = audioContext.createMediaElementSource(audioElement);
+
+    const stereoNode = new StereoPannerNode(audioContext, { pan: 0 });
+    stereoNode.pan.value = constraints.relative; 
+    track.connect(stereoNode).connect(audioContext.destination);
+    audioElement.volume = constraints.volume;
 }
