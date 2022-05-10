@@ -26,8 +26,8 @@ var actions = {
 }
 
 var handlers = {
-    Browser    : 0,     Unity     : 1,      
-    Server     : 2,     None      : 3,
+    Browser    : 1,     Unity     : 2,      
+    Server     : 4,     None      : 0,
 }
 
 
@@ -42,7 +42,7 @@ const receiveMessage = async (message) => {
             await handleInitiate(data.SenderId);
             break;
         case actions.Handshake  :
-            handleHandshake(data.TargetIds);
+            handleHandshake(data.SenderId, data.TargetIds);
             break;
         case actions.Offer      :
             await handleOffer(data.SenderId, JSON.parse(data.Body));
@@ -51,10 +51,10 @@ const receiveMessage = async (message) => {
             await handleAnswer(data.SenderId, JSON.parse(data.Body));
             break;
         case actions.Disconnect :
-            handleDisconnect(data.SenderId, data.TargetIds);
+            handleDisconnect(data.SenderId);
             break;
         case actions.Quit       :
-            handleQuit(data.SenderId, data.TargetIds);
+            handleQuit(data.SenderId);
             break;
         default:
             break;
@@ -66,10 +66,12 @@ const send = (target, message) => {
     WebglInstance.SendMessage("GameManager", "HandleMessageBrowser", JSON.stringify(message));
 }
 
-const handleQuit = (userId, others) => {
+const handleQuit = (userId) => {
     if(userId == localUser) {
-        for(var i = 0; i < others.length; i++) {
-            handleDisconnect(others[i], null);
+        for(var i = 0; i < availableUsers.length; i++) {
+            if(availableUsers[i] != localUser) {
+                handleDisconnect(availableUsers[i], null);
+            }
         }
     } else {
         availableUsers = availableUsers.filter(user => user != userId)
@@ -86,10 +88,12 @@ const handleQuit = (userId, others) => {
     }
 }
 
-const handleDisconnect = (userId, others) => {
+const handleDisconnect = (userId) => {
     if(userId == localUser) {
-        for(var i = 0; i < others.length; i++) {
-            handleDisconnect(others[i], null);
+        for(var i = 0; i < availableUsers.length; i++) {
+            if(availableUsers[i] != localUser) {
+                handleDisconnect(availableUsers[i], null);
+            }
         }
     } else {
         availableUsers = availableUsers.filter(user => user != userId)
@@ -97,7 +101,7 @@ const handleDisconnect = (userId, others) => {
             if(EFFICIENT_MODE) {
                 localConnections[userId].replaceTrack(null, localStream);
             } else {
-                toggleMuteUser(userId, false);
+                toggleMuteUser(userId, true);
             }
         }
     }
@@ -125,25 +129,27 @@ const handleInitiate  = async (user) => {
     }
 }
 
-const handleHandshake = async (users) => {
+const handleHandshake = async (userId, userIds) => {
     console.log("Handshake Started");
-    availableUsers = users;
-    availableUsers.forEach(user => {
-        var exists = localUser == user;
-        if(!exists) {
-            if(localConnections[user] == null) {
-                localConnections[user] = createHandshake(user);
-                proposeOffer(user);
-            } else {
-                if(EFFICIENT_MODE) {
-                    localConnections[user].replaceTrack(localStream.getTracks()[0], localStream);
+    if(userId == localUser) {
+        availableUsers = userIds;
+        availableUsers.forEach(user => {
+            if(localUser != user) {
+                if(localConnections[user] == null) {
+                    localConnections[user] = createHandshake(user);
+                    proposeOffer(user);
                 } else {
-                    toggleMuteUser(user, audioOn);
+                    if(EFFICIENT_MODE) {
+                        localConnections[user].replaceTrack(localStream.getTracks()[0], localStream);
+                    } else {
+                        toggleMuteUser(user, !audioOn);
+                    }
                 }
-                availableUsers.push(user);
             }
-        }
-    });
+        });
+    } else if(userIds.includes(localUser) && localConnections[userId] != null) {
+        toggleMuteUser(userId, !audioOn);
+    }
     console.log("Handshake Finished");
 }
 
@@ -221,21 +227,16 @@ function toggleMuteUser(id, state) {
     audioElement.muted = state;
 }
 
-function toggleSpeaker(isOn, id) {
+function toggleSpeaker(isOn) {
     audioOn = isOn;
-    var audioElements = document.getElementById("audio-zone");
-    var children = audioElements.children;
-    for (var i = 0; i < children.length; i++) {
-        var child = children[i];
-        if (child.tagName == "AUDIO") {
-            child.muted = !audioOn;
-        }
-    }
+    availableUsers.forEach(userId => {
+        toggleMuteUser(userId, !audioOn);
+    });
 }
 
 function UpdatePlayerPosition(id, _position, _direction) {
     if(localUser == null ) return;
-    var getAudioConstraints = (remotePos) => {
+    const getAudioConstraints = (remotePos) => {
         let xs = transform.position.x - remotePos.x;
         let ys = transform.position.y - remotePos.y;
         let zs = transform.position.z - remotePos.z;
@@ -266,6 +267,11 @@ function UpdatePlayerPosition(id, _position, _direction) {
 
     const stereoNode = new StereoPannerNode(audioContext, { pan: 0 });
     stereoNode.pan.value = constraints.relative; 
-    track.connect(stereoNode).connect(audioContext.destination);
-    audioElement.volume = constraints.volume;
+    
+    const gainNode = audioContext.createGain();
+    gainNode.gain.value = constraints.volume;
+    
+    track.connect(stereoNode)
+        .connect(gainNode)
+        .connect(audioContext.destination);
 }
