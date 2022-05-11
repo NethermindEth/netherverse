@@ -35,15 +35,6 @@ var handlers = {
     Server     : 4,     None      : 0,
 }
 
-
-function AskForMediaPermission() {
-    navigator.mediaDevices.getUserMedia({audio : true, video : false})
-    .then(stream => {
-        localStream = stream;
-    });
-}
-AskForMediaPermission();
-
 function handleMessage(message) {
     receiveMessage(message);
 }
