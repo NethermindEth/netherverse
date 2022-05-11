@@ -2,6 +2,7 @@ const EFFICIENT_MODE = false;
 const TD_SOUNDS_MODE = false;
 
 const audioContext = new AudioContext();
+const audioZone = document.getElementById("audio-zone");
 
 var localUser, currentRoom = [], transform;
 var zones = {};
@@ -12,7 +13,7 @@ var localStream = null;
 var audioOn = true;
 var microOn = true;
 
-var audioZone = document.getElementById("audio-zone");
+var MediaElementAudioSourceNodeMap = {};
 
 var configuration = {
     iceServers: [
@@ -46,7 +47,7 @@ const receiveMessage = async (message) => {
             await handleInitiate(data.SenderId);
             break;
         case actions.Handshake  :
-            handleHandshake(data.SenderId, data.RoomId, data.TargetIds);
+            handleHandshake(data.SenderId, data.RoomId);
             break;
         case actions.Offer      :
             await handleOffer(data.SenderId, JSON.parse(data.Body));
@@ -110,7 +111,7 @@ const handleDisconnect = (userId, roomId) => {
         currentRoom.shift();
     } 
 
-    handleZoneChange();
+    handleZoneChange(userId);
     console.log("Disconnect Finished");
 }
 
@@ -135,7 +136,7 @@ const handleInitiate  = async (user) => {
     }
 }
 
-const handleHandshake = async (userId, roomId, userIds) => {
+const handleHandshake = async (userId, roomId) => {
     console.log("Handshake Started");
     if(userId == localUser) {
         currentRoom.push(roomId); 
@@ -147,21 +148,21 @@ const handleHandshake = async (userId, roomId, userIds) => {
 
     zones[roomId].push(userId);
 
-    handleZoneChange();
+    handleZoneChange(userId);
     console.log("Handshake Finished");
 }
 
-const handleZoneChange = () => {
-    console.log("Zone Change Started");
-    toggleSpeaker(false);
+const handleZoneChange = (userId) => {
+    toggleSpeaker(false, false);
     if(currentRoom.length > 0) {
         var roomId = currentRoom[currentRoom.length - 1];
         var userIds = zones[roomId];
         userIds.forEach(user => {
-            if(localUser != user) {
                 if(localConnections[user] == null) {
-                    localConnections[user] = createHandshake(user);
-                    proposeOffer(user);
+                    if(userId == localUser && user != localUser) {
+                        localConnections[user] = createHandshake(user);
+                        proposeOffer(user);
+                    }
                 } else {
                     if(EFFICIENT_MODE) {
                         localConnections[user].replaceTrack(localStream.getTracks()[0], localStream);
@@ -170,13 +171,9 @@ const handleZoneChange = () => {
                     }
                 }
             }
-        }
         );
     }
-    toggleSpeaker(true);
     console.log("Zone Change Finished");
-
-    console.log(zones, currentRoom);
 }
 
 const createHandshake = (userId) => {
@@ -184,7 +181,6 @@ const createHandshake = (userId) => {
     var connection = new RTCPeerConnection(configuration);
 
     connection.ontrack = (event) => {
-        // create audio element 
         var remoteAudio = document.createElement("AUDIO");
         remoteAudio.srcObject = event.streams[0];
         remoteAudio.id = "audio-input::" + userId;
@@ -252,22 +248,14 @@ function toggleMuteUser(id, state) {
     }
 }
 
-function toggleSpeaker(isOn) {
-    audioOn = isOn;
-    // get all audio nodes
-    if(isOn && localStream != null) {
-        var roomId = currentRoom[currentRoom.length - 1];
-        if(roomId != null && zones[roomId] != null) {
-            zones[roomId].forEach(userId => {
-                if(userId != localUser) {
-                    toggleMuteUser(userId, !audioOn);
-                }
-            });
-        }
+function toggleSpeaker(isOn, persist = true) {
+    if(persist) audioOn = isOn;
+    if(isOn) {
+        handleZoneChange(localUser);
     } else {
         var audioNodes = document.getElementsByTagName("AUDIO");
         for(var i = 0; i < audioNodes.length; i++) {
-            audioNodes[i].muted = !audioOn;
+            audioNodes[i].muted = true;
         }
     }
 }
@@ -308,12 +296,14 @@ function UpdatePlayerPosition(id, _position, _direction) {
 
     var constraints = getAudioConstraints(_position);
     console.log(constraints);
+    
     const audioElement = document.getElementById("audio-input::" + id);
-
     if(audioElement == null) return;
     
-    const track = audioContext.createMediaElementSource(audioElement);
-
+    if(MediaElementAudioSourceNodeMap[id] == null) {
+        MediaElementAudioSourceNodeMap[id] = new MediaElementAudioSourceNode(audioElement);
+    }
+    track = MediaElementAudioSourceNodeMap[id];        
     const stereoNode = audioContext.createStereoPanner();
     stereoNode.pan.value = constraints.relative; 
     
