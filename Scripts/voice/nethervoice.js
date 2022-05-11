@@ -70,8 +70,9 @@ const handleQuit = (userId) => {
     zones[roomId] = zones[roomId].filter(user => user != userId);
 
     if(userId == localUser) {
-        if(currentRoom.length > 0 && zones[currentRoom[0]] != null) {
-            zones[currentRoom[0]] = zones[currentRoom[0]].filter(user => 
+        var roomId = currentRoom[currentRoom.length - 1];
+        if(roomId != null && zones[roomId] != null) {
+            zones[roomId] = zones[roomId].filter(user => 
                 handleDisconnect(user, null)
             );
         }
@@ -145,7 +146,7 @@ const handleZoneChange = () => {
     console.log("Zone Change Started");
     toggleSpeaker(false);
     if(currentRoom.length > 0) {
-        var roomId = currentRoom[0];
+        var roomId = currentRoom[currentRoom.length - 1];
         var userIds = zones[roomId];
         userIds.forEach(user => {
             if(localUser != user) {
@@ -246,8 +247,9 @@ function toggleSpeaker(isOn) {
     audioOn = isOn;
     // get all audio nodes
     if(isOn && localStream != null) {
-        if(currentRoom.length > 0 && zones[currentRoom[0]] != null) {
-            zones[currentRoom[0]].forEach(userId => {
+        var roomId = currentRoom[currentRoom.length - 1];
+        if(roomId != null && zones[roomId] != null) {
+            zones[roomId].forEach(userId => {
                 if(userId != localUser) {
                     toggleMuteUser(userId, !audioOn);
                 }
