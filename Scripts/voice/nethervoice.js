@@ -1,6 +1,6 @@
 const EFFICIENT_MODE = false;
-var localUser, transform;
-var availableUsers = [];
+var localUser, currentRoom = [], transform;
+var zones = {};
 
 var localConnections = {};
 var localStream = null;
@@ -42,7 +42,7 @@ const receiveMessage = async (message) => {
             await handleInitiate(data.SenderId);
             break;
         case actions.Handshake  :
-            handleHandshake(data.SenderId, data.TargetIds);
+            handleHandshake(data.SenderId, data.RoomId, data.TargetIds);
             break;
         case actions.Offer      :
             await handleOffer(data.SenderId, JSON.parse(data.Body));
@@ -51,10 +51,10 @@ const receiveMessage = async (message) => {
             await handleAnswer(data.SenderId, JSON.parse(data.Body));
             break;
         case actions.Disconnect :
-            handleDisconnect(data.SenderId);
+            handleDisconnect(data.SenderId, data.RoomId);
             break;
         case actions.Quit       :
-            handleQuit(data.SenderId);
+            handleQuit(data.SenderId, data.RoomId);
             break;
         default:
             break;
@@ -67,14 +67,18 @@ const send = (target, message) => {
 }
 
 const handleQuit = (userId) => {
+    zones[roomId] = zones[roomId].filter(user => user != userId);
+
     if(userId == localUser) {
-        for(var i = 0; i < availableUsers.length; i++) {
-            if(availableUsers[i] != localUser) {
-                handleDisconnect(availableUsers[i], null);
-            }
+        if(currentRoom.length > 0 && zones[currentRoom[0]] != null) {
+            zones[currentRoom[0]] = zones[currentRoom[0]].filter(user => 
+                handleDisconnect(user, null)
+            );
         }
+        zones = {};
+        currentRoom = [];
+        transform = null;
     } else {
-        availableUsers = availableUsers.filter(user => user != userId)
         if(localConnections[userId] != null) {
             localConnections[userId].close();
             delete localConnections[userId];
@@ -88,24 +92,16 @@ const handleQuit = (userId) => {
     }
 }
 
-const handleDisconnect = (userId) => {
-    if(userId == localUser) {
-        for(var i = 0; i < availableUsers.length; i++) {
-            if(availableUsers[i] != localUser) {
-                handleDisconnect(availableUsers[i], null);
-            }
-        }
-    } else {
-        availableUsers = availableUsers.filter(user => user != userId)
-        if(localConnections[userId] != null) {
-            if(EFFICIENT_MODE) {
-                localConnections[userId].replaceTrack(null, localStream);
-            } else {
-                toggleMuteUser(userId, true);
-            }
-        }
-    }
+const handleDisconnect = (userId, roomId) => {
+    console.log("Disconnect Started");
+    zones[roomId] = zones[roomId].filter(user => user != userId);
 
+    if(userId == localUser) {
+        currentRoom.shift();
+    } 
+
+    handleZoneChange();
+    console.log("Disconnect Finished");
 }
 
 const handleInitiate  = async (user) => {
@@ -129,11 +125,29 @@ const handleInitiate  = async (user) => {
     }
 }
 
-const handleHandshake = async (userId, userIds) => {
+const handleHandshake = async (userId, roomId, userIds) => {
     console.log("Handshake Started");
     if(userId == localUser) {
-        availableUsers = userIds;
-        availableUsers.forEach(user => {
+        currentRoom.push(roomId); 
+    }
+    
+    if(zones[roomId] == null) {
+        zones[roomId] = [];
+    }
+
+    zones[roomId].push(userId);
+
+    handleZoneChange();
+    console.log("Handshake Finished");
+}
+
+const handleZoneChange = () => {
+    console.log("Zone Change Started");
+    toggleSpeaker(false);
+    if(currentRoom.length > 0) {
+        var roomId = currentRoom[0];
+        var userIds = zones[roomId];
+        userIds.forEach(user => {
             if(localUser != user) {
                 if(localConnections[user] == null) {
                     localConnections[user] = createHandshake(user);
@@ -146,11 +160,13 @@ const handleHandshake = async (userId, userIds) => {
                     }
                 }
             }
-        });
-    } else if(userIds.includes(localUser) && localConnections[userId] != null) {
-        toggleMuteUser(userId, !audioOn);
+        }
+        );
     }
-    console.log("Handshake Finished");
+    toggleSpeaker(true);
+    console.log("Zone Change Finished");
+
+    console.log(zones, currentRoom);
 }
 
 const createHandshake = (userId) => {
@@ -190,9 +206,6 @@ const proposeOffer = async (targetId) => {
 
 const handleOffer = async (target, offer) => {
     console.log("Handle Offer Started");
-    if(!availableUsers.includes(target)) {
-        availableUsers.push(target);
-    }
     localConnections[target] = createHandshake(target);
     await localConnections[target].setRemoteDescription(offer);
     const answer = await localConnections[target].createAnswer()
@@ -224,14 +237,28 @@ function toggleMicrophone(isOn) {
 
 function toggleMuteUser(id, state) {
     const audioElement = document.getElementById("audio-input::" + id);
-    audioElement.muted = state;
+    if(audioElement != null) {
+        audioElement.muted = state;
+    }
 }
 
 function toggleSpeaker(isOn) {
     audioOn = isOn;
-    availableUsers.forEach(userId => {
-        toggleMuteUser(userId, !audioOn);
-    });
+    // get all audio nodes
+    if(isOn && localStream != null) {
+        if(currentRoom.length > 0 && zones[currentRoom[0]] != null) {
+            zones[currentRoom[0]].forEach(userId => {
+                if(userId != localUser) {
+                    toggleMuteUser(userId, !audioOn);
+                }
+            });
+        }
+    } else {
+        var audioNodes = document.getElementsByTagName("AUDIO");
+        for(var i = 0; i < audioNodes.length; i++) {
+            audioNodes[i].muted = !audioOn;
+        }
+    }
 }
 
 function UpdatePlayerPosition(id, _position, _direction) {
