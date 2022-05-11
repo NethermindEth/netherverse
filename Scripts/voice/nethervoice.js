@@ -104,7 +104,7 @@ const handleQuit = (userId, roomId) => {
 
 const handleDisconnect = (userId, roomId) => {
     console.log("Disconnect Started");
-    zones[roomId] = zones[roomId].filter(user => user != userId);
+    zones[roomId]  = zones[roomId]?.filter(user => user != userId);
 
     if(userId == localUser) {
         currentRoom.shift();
@@ -187,6 +187,15 @@ const createHandshake = (userId) => {
         remoteAudio.play();
         remoteAudio.muted = !audioOn;
     };
+
+    connection.oniceconnectionstatechange = (event) => {
+        if(event.target.iceConnectionState == "disconnected" || event.target.iceConnectionState == "failed") {
+            connection.close();
+            localConnections[userId] = createHandshake(userId);
+            proposeOffer(userId);
+        }
+        
+    }
 
     if(localStream != null) {
         localStream.getTracks().forEach(track => connection.addTrack(track, localStream));
