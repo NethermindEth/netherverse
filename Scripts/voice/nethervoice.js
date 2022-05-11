@@ -1,4 +1,8 @@
 const EFFICIENT_MODE = false;
+const TD_SOUNDS_MODE = false;
+
+const audioContext = new AudioContext();
+
 var localUser, currentRoom = [], transform;
 var zones = {};
 
@@ -66,7 +70,7 @@ const send = (target, message) => {
     WebglInstance.SendMessage("GameManager", "HandleMessageBrowser", JSON.stringify(message));
 }
 
-const handleQuit = (userId) => {
+const handleQuit = (userId, roomId) => {
     zones[roomId] = zones[roomId].filter(user => user != userId);
 
     if(userId == localUser) {
@@ -79,6 +83,11 @@ const handleQuit = (userId) => {
         zones = {};
         currentRoom = [];
         transform = null;
+        localUser = null;
+        localConnections = {};
+        localStream = null;
+        audioOn = true;
+        microOn = true;
     } else {
         if(localConnections[userId] != null) {
             localConnections[userId].close();
@@ -264,19 +273,24 @@ function toggleSpeaker(isOn) {
 }
 
 function UpdatePlayerPosition(id, _position, _direction) {
+    if(!TD_SOUNDS_MODE) return;
+
     if(localUser == null ) return;
     const getAudioConstraints = (remotePos) => {
         let xs = transform.position.x - remotePos.x;
         let ys = transform.position.y - remotePos.y;
         let zs = transform.position.z - remotePos.z;
-        var distance = Math.sqrt(xs * xs + ys * ts + zs * zs );
+        var distance = Math.sqrt(xs * xs + ys * ys + zs * zs );
         var volume = Math.max(0, (1-Math.exp(distance - 10)));
+        console.log(distance, volume);
         var otherAngle = xs != 0 ? Math.atan(ys/xs) 
                                  : Math.PI * 0.5;
+        console.log(otherAngle);
         var relativePosition = transform.angle - otherAngle ;
+        console.log(relativePosition);
         return {
             "volume"   : volume, 
-            "relative" : relativePosition / Math.Pi
+            "relative" : relativePosition == NaN ? 0 : Math.max(-1,Math.min(1,relativePosition / Math.PI))
         };
     }
 
@@ -288,19 +302,25 @@ function UpdatePlayerPosition(id, _position, _direction) {
         return;
     }
 
-    var constraints = getAudioConstraints(transform.position, _position);
+    if(transform == null || transform.position == null || transform.angle == null) {
+        return;
+    }
 
-    const audioContext = new AudioContext();
+    var constraints = getAudioConstraints(_position);
+    console.log(constraints);
     const audioElement = document.getElementById("audio-input::" + id);
+
+    if(audioElement == null) return;
+    
     const track = audioContext.createMediaElementSource(audioElement);
 
-    const stereoNode = new StereoPannerNode(audioContext, { pan: 0 });
+    const stereoNode = audioContext.createStereoPanner();
     stereoNode.pan.value = constraints.relative; 
     
     const gainNode = audioContext.createGain();
     gainNode.gain.value = constraints.volume;
     
-    track.connect(stereoNode)
-        .connect(gainNode)
+    track.connect(gainNode)
+        .connect(stereoNode)
         .connect(audioContext.destination);
 }
