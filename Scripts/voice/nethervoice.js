@@ -189,7 +189,7 @@ const createHandshake = (userId) => {
     };
 
     connection.oniceconnectionstatechange = (event) => {
-        if(event.target.iceConnectionState == "disconnected" || event.target.iceConnectionState == "failed") {
+        if(event.target.iceConnectionState == "failed") {
             connection.close();
             localConnections[userId] = createHandshake(userId);
             proposeOffer(userId);
