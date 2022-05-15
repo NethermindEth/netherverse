@@ -191,8 +191,8 @@ const createHandshake = (userId) => {
     console.log("Create Handshake Started");
     var connection = new RTCPeerConnection(configuration);
     
-    connection.oniceconnectionstatechange = (event) => {
-        if(event.target.iceConnectionState == "failed") {
+    connection.onconnectionstatechange = (event) => {
+        if(connection.connectionState == "failed") {
             connection.close();
             localConnections[userId] = createHandshake(userId);
             proposeOffer(userId);
