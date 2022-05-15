@@ -287,9 +287,13 @@ function toggleMicrophone(isOn) {
 }
 
 const toggleMuteUser = (id, state) => {
-    const audioElement = document.getElementById("audio-input::" + id);
-    if(audioElement != null) {
-        audioElement.muted = state;
+    if(td_sound) {
+        AudioSourceNodes[id].GainNode.gain.value = state ? 0 : 1;
+    } else {
+        const audioElement = document.getElementById("audio-input::" + id);
+        if(audioElement != null) {
+            audioElement.muted = state;
+        }
     }
 }
 
@@ -298,9 +302,15 @@ function toggleSpeaker(isOn, persist = true) {
     if(isOn) {
         handleZoneChange(localUser);
     } else {
-        var audioNodes = document.getElementsByTagName("AUDIO");
-        for(var i = 0; i < audioNodes.length; i++) {
-            audioNodes[i].muted = true;
+        if(td_sound) {
+            for(var key in AudioSourceNodes) {
+                AudioSourceNodes[key].GainNode.gain.value = audioOn ? 1 : 0;
+            }
+        } else {
+            var audioNodes = document.getElementsByTagName("AUDIO");
+            for(var i = 0; i < audioNodes.length; i++) {
+                audioNodes[i].muted = true;
+            }
         }
     }
 }
