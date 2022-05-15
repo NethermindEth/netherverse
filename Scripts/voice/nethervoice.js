@@ -194,6 +194,15 @@ const createHandshake = (userId) => {
     connection.onconnectionstatechange = (event) => {
         if(connection.connectionState == "failed") {
             connection.close();
+            if(td_sound) {
+                AudioSourceNodes[userId].Audio.disconnect();
+            } else {
+                var remoteAudio = document.createElement("AUDIO");
+                if(remoteAudio) {
+                    remoteAudio.srcObject = null;
+                    remoteAudio.remove();
+                }
+            }
             localConnections[userId] = createHandshake(userId);
             proposeOffer(userId);
         }
