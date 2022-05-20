@@ -1,19 +1,26 @@
-
 const audioContext = new AudioContext();
 const audioZone    = document.getElementById("audio-zone");
 
+var LocalState;
+const initiateState = () => 
+    LocalState = {
+        UserId      : null, 
+        CurrentRoom : [],
+        Connections : {},
+        AudioNodes  : {
+            Local : null,
+            Remote: {}
+        },
+        Zones       : {},
+        SoundSetting: {
+            Microphone   : 1,
+            Speakers     : 1,
+            IsPositional : 1
+        }, 
+        LocalStream : null 
+    };
+initiateState();
 
-var localUser, currentRoom = [];
-var zones = {};
-
-var localConnections = {};
-var localStream = null;
-
-var audioOn  = true;
-var microOn  = true;
-var td_sound = false;
-
-var AudioSourceNodes = {};
 
 var configuration = {
     iceServers: [
@@ -27,7 +34,7 @@ var actions = {
     Initiate   : 0,       Offer      : 3,      
     Handshake  : 5,       Disconnect : 6,
     Answer     : 4,       Quit       : 9,
-    
+    Error      : 10
 }
 
 var handlers = {
@@ -61,6 +68,8 @@ const receiveMessage = async (message) => {
         case actions.Quit       :
             handleQuit(data.SenderId, data.RoomId);
             break;
+        case actions.Error      :
+            handleError(data.Body);
         default:
             break;
     }
@@ -72,46 +81,34 @@ const send = (target, message) => {
 }
 
 const handleQuit = (userId, roomId) => {
-    zones[roomId] = zones[roomId].filter(user => user != userId);
+    LocalState.Zones[roomId] = LocalState.Zones[roomId].filter(user => user != userId);
 
-    if(userId == localUser) {
-        var roomId = currentRoom[currentRoom.length - 1];
-        if(roomId != null && zones[roomId] != null) {
-            zones[roomId] = zones[roomId].filter(user => 
-                handleDisconnect(user, null)
+    if(userId == LocalState.UserId) {
+        var roomId = LocalState.CurrentRoom[LocalState.CurrentRoom.length - 1];
+        if(roomId != null && LocalState.Zones[roomId] != null) {
+            LocalState.Zones[roomId] = LocalState.Zones[roomId].filter(user => 
+                handleDisconnect(user, roomId)
             );
         }
-        zones = {};
-        currentRoom = [];
-        transform = null;
-        localUser = null;
-        localConnections = {};
-        localStream = null;
-        audioOn = true;
-        microOn = true;
+        initiateState();
     } else {
-        if(localConnections[userId] != null) {
-            localConnections[userId].close();
-            delete localConnections[userId];
+        if(LocalState.Connections[userId] != null) {
+            LocalState.Connections[userId].close();
+            // delete LocalState.Connections[userId];
         }
-        if(td_sound) {
-            AudioSourceNodes[userId].Audio.disconnect();
-        } else {
-            var userAudio = document.getElementById("audio-input::" + userId);
-            if(userAudio != null) {
-                userAudio.srcObject = null;
-                userAudio.remove();
-            }
-        }
+
+        LocalState.AudioNodes.Remote[userId].Audio.disconnect();
+        LocalState.AudioNodes.Remote[userId].Analyser.disconnect();
+        //delete LocalState.AudioNodes.Remote[userId];
     }
 }
 
 const handleDisconnect = (userId, roomId) => {
     console.log("Disconnect Started");
-    zones[roomId] = zones[roomId]?.filter(user => user != userId);
+    LocalState.Zones[roomId] = LocalState.Zones[roomId]?.filter(user => user != userId);
 
-    if(userId == localUser) {
-        currentRoom.shift();
+    if(userId == LocalState.UserId) {
+        LocalState.CurrentRoom.shift();
     } 
 
     handleZoneChange(userId);
@@ -120,10 +117,10 @@ const handleDisconnect = (userId, roomId) => {
 
 const handleInitiate  = async (user) => {
     console.log("Initiate Started");
-    localUser = user;
+    LocalState.UserId = user;
     try {
-        if(localStream == null) {
-            localStream = await navigator.mediaDevices
+        if(LocalState.LocalStream == null) {
+            LocalState.LocalStream = await navigator.mediaDevices
             .getUserMedia({ 
                 audio: 
                     {   echoCancellation: true  ,
@@ -132,36 +129,28 @@ const handleInitiate  = async (user) => {
                 video: false
             });
             
-            AudioSourceNodes[user] =  {
-                StereoNode   : null,
-                GainNode     : null,
-                Transform    : null,
-                Stream       : localStream,
-                Audio        : audioContext.createMediaStreamSource(localStream)
+            LocalState.AudioNodes.Local =  {
+                Stream       : LocalState.LocalStream,
+                Audio        : audioContext.createMediaStreamSource(LocalState.LocalStream)
             }
-        }
-        if(!td_sound) {
-            var localAudio = document.createElement("AUDIO");
-            localAudio.srcObject = localStream;
-            localAudio.id = "local-audio";
         }
         console.log("Initiate Finished");
     } catch (error) {
-        localStream = null;
+        LocalState.LocalStream = null;
     }
 }
 
 const handleHandshake = async (userId, roomId) => {
     console.log("Handshake Started");
-    if(userId == localUser) {
-        currentRoom.push(roomId); 
+    if(userId == LocalState.UserId) {
+        LocalState.CurrentRoom.push(roomId); 
     }
     
-    if(zones[roomId] == null) {
-        zones[roomId] = [];
+    if(LocalState.Zones[roomId] == null) {
+        LocalState.Zones[roomId] = [];
     }
 
-    zones[roomId].push(userId);
+    LocalState.Zones[roomId].push(userId);
 
     handleZoneChange(userId);
     console.log("Handshake Finished");
@@ -169,17 +158,15 @@ const handleHandshake = async (userId, roomId) => {
 
 const handleZoneChange = (userId) => {
     toggleSpeaker(false, false);
-    if(currentRoom.length > 0) {
-        var roomId = currentRoom[currentRoom.length - 1];
-        var userIds = zones[roomId];
+    if(LocalState.CurrentRoom.length > 0) {
+        var roomId = LocalState.CurrentRoom[LocalState.CurrentRoom.length - 1];
+        var userIds = LocalState.Zones[roomId];
         userIds.forEach(user => {
-                if(localConnections[user] == null) {
-                    if(userId == localUser && user != localUser) {
-                        localConnections[user] = createHandshake(user);
-                        proposeOffer(user);
-                    }
+                if(userId == LocalState.UserId && !LocalState.Connections[user] && user != LocalState.UserId) {
+                            LocalState.Connections[user] = createHandshake(user);
+                            proposeOffer(user);
                 } else {
-                    toggleMuteUser(user, !audioOn);
+                    setUserSoundState(user, LocalState.SoundSetting.Speakers);
                 }
             }
         );
@@ -191,60 +178,46 @@ const createHandshake = (userId) => {
     console.log("Create Handshake Started");
     var connection = new RTCPeerConnection(configuration);
     
-    connection.onconnectionstatechange = (event) => {
+    connection.onconnectionstatechange = (_) => {
         if(connection.connectionState == "failed") {
             connection.close();
-            if(td_sound) {
-                AudioSourceNodes[userId].Audio.disconnect();
-            } else {
-                var remoteAudio = document.createElement("AUDIO");
-                if(remoteAudio) {
-                    remoteAudio.srcObject = null;
-                    remoteAudio.remove();
-                }
-            }
-            localConnections[userId] = createHandshake(userId);
+            LocalState.AudioNodes.Remote[userId].Audio.disconnect();
+            LocalState.Connections[userId] = createHandshake(userId);
             proposeOffer(userId);
         }
-        
     }
 
     connection.ontrack = (event) => {
         console.log("Create Handshake Track");
-        if(td_sound) {
-            var remoteAudio = document.createElement("AUDIO");
-            remoteAudio.srcObject = event.streams[0];
+        var remoteAudio = document.createElement("AUDIO");
+        remoteAudio.srcObject = event.streams[0];
 
-            const remoteNode = audioContext.createMediaStreamSource(remoteAudio.srcObject);
-            const stereoNode = audioContext.createStereoPanner();
-            const gainNode   = audioContext.createGain();
+        const remoteNode   = audioContext.createMediaStreamSource(remoteAudio.srcObject);
+        const stereoNode   = audioContext.createStereoPanner();
+        const gainNode     = audioContext.createGain();
+        const AnalyserNode = audioContext.createAnalyser();
 
-            AudioSourceNodes[userId] =  {
-                StereoNode   : stereoNode,
-                GainNode     : gainNode,
-                Audio        : remoteNode,
-                Stream       : event.streams[0],
-                Transform    : null,
-                DOMElement   : remoteAudio
-            }
-
-            remoteNode.connect(stereoNode);
-            stereoNode.connect(gainNode);
-            gainNode.connect(audioContext.destination);
-            gainNode.gain.value = 0;
-            audioContext.resume();
-        } else {
-            var remoteAudio = document.createElement("AUDIO");
-            remoteAudio.srcObject = event.streams[0];
-            remoteAudio.id = "audio-input::" + userId;
-            audioZone.appendChild(remoteAudio);
-            remoteAudio.play();
-            remoteAudio.muted = !audioOn;
+        LocalState.AudioNodes.Remote[userId] =  {
+            Stereo       : stereoNode,
+            Gain         : gainNode,
+            Audio        : remoteNode,
+            Stream       : event.streams[0],
+            Analyser     : AnalyserNode,
+            Transform    : null,
+            SoundState   : 1,
+            DOMElement   : remoteAudio
         }
+
+        remoteNode.connect(stereoNode);
+        stereoNode.connect(gainNode);
+        gainNode.connect(AnalyserNode);
+        AnalyserNode.connect(audioContext.destination);
+        gainNode.gain.value = 0;
+        audioContext.resume();
     };
 
-    if(localStream != null) {
-        localStream.getTracks().forEach(track => connection.addTrack(track, localStream));
+    if(LocalState.LocalStream != null) {
+        LocalState.LocalStream.getTracks().forEach(track => connection.addTrack(track, LocalState.LocalStream));
     }
     console.log("Create Handshake Finished");
     return connection;
@@ -252,125 +225,153 @@ const createHandshake = (userId) => {
 
 const proposeOffer = async (targetId) => {
     console.log("Propose Offer Started");
-    var offer = await localConnections[targetId].createOffer();
-    await localConnections[targetId].setLocalDescription(offer);
+    var offer = await LocalState.Connections[targetId].createOffer();
+    await LocalState.Connections[targetId].setLocalDescription(offer);
     
     await new Promise(resolve => setTimeout(resolve, 1000));
     
     send(targetId, {  Source   : handlers.Browser, 
                       Action   : actions.Offer,
-                      Body     : JSON.stringify(localConnections[targetId].localDescription),
-                      SenderId : localUser });
+                      Body     : JSON.stringify(LocalState.Connections[targetId].localDescription),
+                      SenderId : LocalState.UserId });
     console.log("Propose Offer Finished");
 }
 
 const handleOffer = async (target, offer) => {
     console.log("Handle Offer Started");
-    localConnections[target] = createHandshake(target);
-    await localConnections[target].setRemoteDescription(offer);
-    const answer = await localConnections[target].createAnswer()
-    await localConnections[target].setLocalDescription(answer);
+    LocalState.Connections[target] = createHandshake(target);
+    await LocalState.Connections[target].setRemoteDescription(offer);
+    const answer = await LocalState.Connections[target].createAnswer()
+    await LocalState.Connections[target].setLocalDescription(answer);
 
     await new Promise(resolve => setTimeout(resolve, 1000));
 
     send(target, {  Source   : handlers.Browser,
                     Action   : actions.Answer,
-                    Body     : JSON.stringify(localConnections[target].localDescription), 
-                    SenderId : localUser});
+                    Body     : JSON.stringify(LocalState.Connections[target].localDescription), 
+                    SenderId : LocalState.UserId});
     console.log("Handle Offer Finished");
 }
 
 const handleAnswer = async (sender, answer) => {
     console.log("Handle Answer Started");
-    await localConnections[sender].setRemoteDescription(answer);
+    await LocalState.Connections[sender].setRemoteDescription(answer);
     console.log("Handle Answer Finished");
 }
 
 function toggleMicrophone(isOn) {
-    microOn = isOn;
-    if(localStream != null) {
-        localStream.getAudioTracks().forEach(track => {
-            track.enabled = microOn;  
+    LocalState.SoundSetting.Microphone = isOn;
+    if(LocalState.LocalStream != null) {
+        LocalState.LocalStream.getAudioTracks().forEach(track => {
+            track.enabled = LocalState.SoundSetting.Microphone > 0 ? true : false;  
         });
     }
 }
 
-const toggleMuteUser = (id, state) => {
-    if(td_sound) {
-        AudioSourceNodes[id].GainNode.gain.value = state ? 0 : 1;
-    } else {
-        const audioElement = document.getElementById("audio-input::" + id);
-        if(audioElement != null) {
-            audioElement.muted = state;
-        }
+const setUserSoundState = (id, state) => {
+    if(LocalState.AudioNodes.Remote[id]) {
+        LocalState.AudioNodes.Remote[id].SoundState       = state;
+        LocalState.AudioNodes.Remote[id].Gain.gain.value *= state;
     }
 }
 
 function toggleSpeaker(isOn, persist = true) {
-    if(persist) audioOn = isOn;
+    if(persist) LocalState.SoundSetting.Speakers = isOn;
     if(isOn) {
-        handleZoneChange(localUser);
+        handleZoneChange(LocalState.UserId);
     } else {
-        if(td_sound) {
-            for(var key in AudioSourceNodes) {
-                AudioSourceNodes[key].GainNode.gain.value = audioOn ? 1 : 0;
-            }
-        } else {
-            var audioNodes = document.getElementsByTagName("AUDIO");
-            for(var i = 0; i < audioNodes.length; i++) {
-                audioNodes[i].muted = true;
-            }
+        for(var key in LocalState.AudioNodes.Remote) {
+            setUserSoundState(key, 0);
         }
     }
 }
 
-function UpdatePlayerPosition(userId, _position, _direction) {
-    if(!td_sound || localUser == null || AudioSourceNodes[userId] == null) return;
+function handleError(err) {
+    alert(err); console.log(err);
+}
 
-    const getAudioConstraints = (remoteTransform) => {
+
+function UpdatePlayerPosition(userId, _position, _direction) {
+    if(!LocalState.SoundSetting.IsPositional) return;
+
+    const getAudioConstraints = (remoteUser) => {
         try {
-            let localTransform = AudioSourceNodes[localUser].Transform;
-            let xs = localTransform.position.x - remoteTransform.position.x,
-                ys = localTransform.position.y - remoteTransform.position.y,
-                zs = localTransform.position.z - remoteTransform.position.z;
+            let localNode  = LocalState.AudioNodes.Local;
+            let remoteNode = LocalState.AudioNodes.Remote[remoteUser];
+            let xs = localNode.Transform.position.x - remoteNode.Transform.position.x,
+                ys = localNode.Transform.position.y - remoteNode.Transform.position.y,
+                zs = localNode.Transform.position.z - remoteNode.Transform.position.z;
             let distance = Math.sqrt(xs * xs + ys * ys + zs * zs );
-            let volume = distance > 20 ? 0.0 : (Math.atan(5-distance/2) + Math.PI/2) / Math.PI; 
-    
+            let volume = distance > 20 ? 0.0 : Math.atan(5-distance) * 0.33 + 0.55; 
+            
             // Note(Ayman) : use proper math, and make it work
-            let otherAngle = xs != 0 ? Math.atan2(Math.abs(ys), Math.abs(xs)) 
-                                     : Math.PI * 0.5;
-            let relativeAngle = localTransform.angle - otherAngle ;
+            let otherAngle = xs != 0 ? Math.atan2(Math.abs(ys), Math.abs(xs)) : Math.PI * 0.5;
+            let relativeAngle = localNode.Transform.angle - otherAngle ;
             return {
-                "volume"   : volume * (audioOn ? 1 : 0), 
+                "volume"   : volume * remoteNode.SoundState, 
                 "relative" : Math.max(-1,Math.min(1,relativeAngle * 2 / Math.PI))
             };
-        } catch(e) {
+        } catch (error) {
             return {
-                "volume"   : 0,
+                "volume"   : 0, 
                 "relative" : 0
             };
         }
     }
 
     const applyAudioConstraints = (id, constraints) => {
-        if(AudioSourceNodes[id] == null) return;
-        AudioSourceNodes[id].StereoNode.pan.value = constraints.relative;
-        AudioSourceNodes[id].GainNode.gain.value = constraints.volume;
+        console.log(constraints);
+        LocalState.AudioNodes.Remote[id].Stereo.pan.value = constraints.relative;
+        LocalState.AudioNodes.Remote[id].Gain.gain.value  = constraints.volume;
     }
+    try {
+        if(userId == LocalState.UserId) {
+            LocalState.AudioNodes.Local.Transform = {
+                "position" : _position,
+                "angle"    : _direction
+            }
+        } else {
+            LocalState.AudioNodes.Remote[userId].Transform = {
+                "position" : _position,
+                "angle"    : _direction
+            }
+        }
 
-    AudioSourceNodes[userId].Transform = {
-        "position" : _position,
-        "angle"    : _direction
-    }
+        if(userId == LocalState.UserId) {
+            let zone = LocalState.Zones[LocalState.CurrentRoom[LocalState.CurrentRoom.length - 1]];
+            zone?.forEach(user => {
+                if(user != LocalState.UserId && LocalState.AudioNodes.Remote[user] != null) {
+                    applyAudioConstraints(user, getAudioConstraints(user));
+                }
+            });
+        } else if(LocalState.AudioNodes.Remote[userId] != null) {
+            applyAudioConstraints(userId, getAudioConstraints(userId));
+        } 
+    } catch(e) {}
+}
 
-    if(userId == localUser) {
-        let zone = zones[currentRoom[currentRoom.length - 1]];
-        zone?.forEach(user => {
-            if(user != localUser && AudioSourceNodes[user] != null) {
-                applyAudioConstraints(user, getAudioConstraints(AudioSourceNodes[user]?.Transform));
+function CheckSpeakers() {
+    var average = arr => arr.reduce((a, v) => a + v, 0) / arr.length;
+    if(LocalState.CurrentRoom.length > 0) {
+        var roomId = LocalState.CurrentRoom[LocalState.CurrentRoom.length - 1];
+        var userIds = LocalState.Zones[roomId];
+        userIds.forEach(id => {
+            if(id == LocalState.UserId) {
+                return;
+            }
+            var analyser = LocalState.AudioNodes.Remote[id].Analyser
+            var bufferLength = analyser.fftSize;
+            var dataArray = new Uint8Array(bufferLength);
+            analyser.getByteFrequencyData(dataArray);
+            let volume = average(dataArray);
+            let isSpeaking = volume >= 7 &&  LocalState.AudioNodes.Remote[id].Gain.gain.value * LocalState.AudioNodes.Remote[id].SoundState > 0;
+            if(isSpeaking) {
+                WebglInstance.SendMessage("GameManager", "HighLightPlayer", `${id}:1`);
+            } else {
+                WebglInstance.SendMessage("GameManager", "HighLightPlayer", `${id}:0`);
             }
         });
-    } else if(AudioSourceNodes[userId] != null) {
-        applyAudioConstraints(userId, getAudioConstraints(AudioSourceNodes[userId]?.Transform));
-    } 
+    }
 }
+
+setInterval(CheckSpeakers, 100);

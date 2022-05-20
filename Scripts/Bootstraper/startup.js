@@ -9,9 +9,33 @@ var avatar_container = document.querySelector("#avatar-Container");
 var canvas = document.querySelector("#unity-canvas");
 var warningBanner = document.querySelector("#unity-warning");
 
+
+// wait for the build to be ready
 function WaitSyncBuildReadyStatus() {
-    while(!buildReady);
+    return new Promise((resolve, reject) => {
+        function checkBuildReady() {
+            if (buildReady) {
+                resolve();
+            } else {
+                setTimeout(checkBuildReady, 100);
+            }
+        }
+        checkBuildReady();
+    });
 }
+
+function SetupVoicePermissions() {
+    buildReady = true;
+    if (navigator.mediaDevices.getUserMedia) {
+        navigator.mediaDevices.getUserMedia({ audio: true }).then(() => {
+        }).catch((error) => {
+            unityShowBanner('Please grant access to the microphone in order to use voice chat.');
+        });
+    } else {
+        unityShowBanner('Your browser does not support voice chat.');
+    }
+}
+
 
 function SetupReadyPlayerMe() {
     function subscribe(event) {
@@ -39,8 +63,11 @@ function SetupReadyPlayerMe() {
             // hide avatarContainer
             avatar_container.hidden = true;
             unity_container.hidden = false;
-            WaitSyncBuildReadyStatus();
-            WebglInstance.SendMessage("MenuManager", "SetUserAvatar", "external::" + avatarURL);
+            WaitSyncBuildReadyStatus().then(
+                () => {
+                    WebglInstance.SendMessage("MenuManager", "SetUserAvatar", "external::" + avatarURL);
+                }
+            );
         }
 
         // Get user id
@@ -121,7 +148,6 @@ function SetupUnityFrame() {
     script.onload = () => {
         createUnityInstance(canvas, config, null).then((unityInstance) => {
             WebglInstance = unityInstance;
-            // wait for 10 seconds before showing the avatar
         }).catch((message) => {
             alert(message);
         });
