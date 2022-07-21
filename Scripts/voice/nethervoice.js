@@ -320,7 +320,6 @@ function UpdatePlayerPosition(userId, _position, _direction) {
     }
 
     const applyAudioConstraints = (id, constraints) => {
-        console.log(constraints);
         LocalState.AudioNodes.Remote[id].Stereo.pan.value = constraints.relative;
         LocalState.AudioNodes.Remote[id].Gain.gain.value  = constraints.volume;
     }
@@ -364,7 +363,7 @@ function CheckSpeakers() {
             var dataArray = new Uint8Array(bufferLength);
             analyser.getByteFrequencyData(dataArray);
             let volume = average(dataArray);
-            let isSpeaking = volume >= 7 &&  LocalState.AudioNodes.Remote[id].Gain.gain.value * LocalState.AudioNodes.Remote[id].SoundState > 0;
+            let isSpeaking = volume >= 3 &&  LocalState.AudioNodes.Remote[id].Gain.gain.value * LocalState.AudioNodes.Remote[id].SoundState > 0;
             if(isSpeaking) {
                 WebglInstance.SendMessage("GameManager", "HighLightPlayer", `${id}:1`);
             } else {

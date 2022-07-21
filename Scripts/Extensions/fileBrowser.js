@@ -28,10 +28,10 @@ const GetLocalFile =  async (type) => {
             case FileType.Presentation:
                 var zip = new JSZip();
                 var images = await zip.loadAsync(data).then(processZip);
-                fileObject.Data = JSON.stringify({
+                fileObject.Data = btoa(JSON.stringify({
                     Slides : images,
                     Index : 0
-                })
+                }))
                 break;
             default:
                 fileObject.Data = data.toString().split(',')[1] 
